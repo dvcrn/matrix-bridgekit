@@ -1,4 +1,4 @@
-package pkg
+package bridgekit
 
 import (
 	"context"
@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/dvcrn/matrix-bridgekit/matrix"
-	"github.com/dvcrn/matrix-bridgekit/pkg/domain"
 	"go.mau.fi/util/configupgrade"
 	"maunium.net/go/mautrix/appservice"
 
@@ -136,12 +135,12 @@ func (m *BridgeKit) CreatePrivatePortal(roomID id.RoomID, user bridge.User, ghos
 	panic("implement me")
 }
 
-func (m *BridgeKit) bindRoomHandlers(room *domain.Room) {
+func (m *BridgeKit) bindRoomHandlers(room *matrix.Room) {
 	fmt.Println("[bindRoomHandlers] ", room.Name)
 	room.MatrixEventHandler = m.handleMatrixRoomEvent
 }
 
-func (m *BridgeKit) handleMatrixRoomEvent(room *domain.Room, user bridge.User, evt *event.Event) {
+func (m *BridgeKit) handleMatrixRoomEvent(room *matrix.Room, user bridge.User, evt *event.Event) {
 	fmt.Println("[handleMatrixRoomEvent] ", room.Name, " evt: ", evt.Type)
 
 	// check if connector implements RoomEventHandler with type assertion
@@ -157,7 +156,7 @@ func (m *BridgeKit) handleMatrixRoomEvent(room *domain.Room, user bridge.User, e
 	fmt.Println("No room event handler")
 }
 
-func (m *BridgeKit) ReplyErrorMessage(ctx context.Context, evt *event.Event, room *domain.Room, err error) (*mautrix.RespSendEvent, error) {
+func (m *BridgeKit) ReplyErrorMessage(ctx context.Context, evt *event.Event, room *matrix.Room, err error) (*mautrix.RespSendEvent, error) {
 
 	content := &event.MessageEventContent{
 		MsgType: event.MsgNotice,
@@ -167,16 +166,16 @@ func (m *BridgeKit) ReplyErrorMessage(ctx context.Context, evt *event.Event, roo
 	return m.SendBotMessageInRoom(ctx, room, content)
 }
 
-func (m *BridgeKit) MarkRead(ctx context.Context, evt *event.Event, room *domain.Room) error {
+func (m *BridgeKit) MarkRead(ctx context.Context, evt *event.Event, room *matrix.Room) error {
 	fmt.Println("Marking as read: ", evt.ID.String())
 
 	return room.BotIntent.MarkRead(ctx, room.MXID, evt.ID)
 }
 
-func (m *BridgeKit) ResetRoomPermission(ctx context.Context, room *domain.Room, user *domain.User, markRead bool) error {
+func (m *BridgeKit) ResetRoomPermission(ctx context.Context, room *matrix.Room, user *matrix.User, markRead bool) error {
 	fmt.Println("[ResetRoomPermission] ", room.Name)
 
-	powerLevels := domain.NewBasePowerLevels()
+	powerLevels := matrix.NewBasePowerLevels()
 	powerLevels.Users = map[id.UserID]int{
 		room.MainIntent().UserID: 100,
 		m.Bridge.Bot.UserID:      9001,
@@ -196,11 +195,11 @@ func (m *BridgeKit) ResetRoomPermission(ctx context.Context, room *domain.Room, 
 	return nil
 }
 
-func (m *BridgeKit) MarkRoomReadOnly(ctx context.Context, room *domain.Room, user *domain.User, markRead bool) error {
+func (m *BridgeKit) MarkRoomReadOnly(ctx context.Context, room *matrix.Room, user *matrix.User, markRead bool) error {
 	fmt.Println("[MarkRoomReadOnly] ", room.Name)
 
 	// set everyone to 100 except the current user, effectively takinga way his permission to do anything
-	powerLevels := domain.NewBasePowerLevels()
+	powerLevels := matrix.NewBasePowerLevels()
 	powerLevels.Users = map[id.UserID]int{
 		room.MainIntent().UserID: 102,
 		m.Bridge.Bot.UserID:      9001,
@@ -225,14 +224,14 @@ func (m *BridgeKit) MarkRoomReadOnly(ctx context.Context, room *domain.Room, use
 	return nil
 }
 
-func (m *BridgeKit) CreateRoom(ctx context.Context, portal *domain.Room, user *domain.User) (*domain.Room, *mautrix.RespCreateRoom, error) {
+func (m *BridgeKit) CreateRoom(ctx context.Context, portal *matrix.Room, user *matrix.User) (*matrix.Room, *mautrix.RespCreateRoom, error) {
 	userIdsToInvite := []id.UserID{
 		m.Bot.UserID,
 		user.MXID,
 	}
 	userIdsToInvite = append(userIdsToInvite, portal.GhostUserIDs()...)
 
-	powerLevels := domain.NewBasePowerLevels()
+	powerLevels := matrix.NewBasePowerLevels()
 	powerLevels.Users = map[id.UserID]int{
 		portal.MainIntent().UserID: 100,
 		m.Bridge.Bot.UserID:        9001,
@@ -270,15 +269,15 @@ func (m *BridgeKit) CreateRoom(ctx context.Context, portal *domain.Room, user *d
 	return portal, room, nil
 }
 
-func (m *BridgeKit) SendBotMessageInRoom(ctx context.Context, room *domain.Room, content *event.MessageEventContent) (*mautrix.RespSendEvent, error) {
+func (m *BridgeKit) SendBotMessageInRoom(ctx context.Context, room *matrix.Room, content *event.MessageEventContent) (*mautrix.RespSendEvent, error) {
 	return m.SendMessageInRoom(ctx, room, m.Bot, content)
 }
 
-func (m *BridgeKit) SendTimestampedBotMessageInRoom(ctx context.Context, room *domain.Room, content *event.MessageEventContent, ts int64) (*mautrix.RespSendEvent, error) {
+func (m *BridgeKit) SendTimestampedBotMessageInRoom(ctx context.Context, room *matrix.Room, content *event.MessageEventContent, ts int64) (*mautrix.RespSendEvent, error) {
 	return m.SendTimestampedMessageInRoom(ctx, room, m.Bot, content, ts)
 }
 
-func (m *BridgeKit) BackfillMessages(ctx context.Context, room *domain.Room, user *domain.User, msgs []*domain.Message, notify bool) error {
+func (m *BridgeKit) BackfillMessages(ctx context.Context, room *matrix.Room, user *matrix.User, msgs []*matrix.Message, notify bool) error {
 	batchSending := m.SpecVersions.Supports(mautrix.BeeperFeatureBatchSending)
 
 	// msgContent := format.RenderMarkdown(text, true, false)
@@ -331,7 +330,7 @@ func (m *BridgeKit) BackfillMessages(ctx context.Context, room *domain.Room, use
 	return nil
 }
 
-func (m *BridgeKit) SendTimestampedMainMessageInRoom(ctx context.Context, room *domain.Room, sender *appservice.IntentAPI, content event.MessageEventContent, ts int64) (*mautrix.RespSendEvent, error) {
+func (m *BridgeKit) SendTimestampedMainMessageInRoom(ctx context.Context, room *matrix.Room, sender *appservice.IntentAPI, content event.MessageEventContent, ts int64) (*mautrix.RespSendEvent, error) {
 	intent := sender
 	if intent == nil {
 		intent = room.MainIntent()
@@ -346,7 +345,7 @@ func (m *BridgeKit) SendTimestampedMainMessageInRoom(ctx context.Context, room *
 	return resp, nil
 }
 
-func (m *BridgeKit) SendTimestampedUserMessageInRoom(ctx context.Context, room *domain.Room, user *domain.User, content *event.MessageEventContent, ts int64) (*mautrix.RespSendEvent, error) {
+func (m *BridgeKit) SendTimestampedUserMessageInRoom(ctx context.Context, room *matrix.Room, user *matrix.User, content *event.MessageEventContent, ts int64) (*mautrix.RespSendEvent, error) {
 	resp, err := m.AS.Client(user.MXID).SendMessageEvent(ctx, room.MXID, event.EventMessage, content, mautrix.ReqSendEvent{
 		Timestamp: ts,
 	})
@@ -358,7 +357,7 @@ func (m *BridgeKit) SendTimestampedUserMessageInRoom(ctx context.Context, room *
 	return resp, nil
 }
 
-func (m *BridgeKit) SendUserMessageInRoom(ctx context.Context, room *domain.Room, user *domain.User, content *event.MessageEventContent) (*mautrix.RespSendEvent, error) {
+func (m *BridgeKit) SendUserMessageInRoom(ctx context.Context, room *matrix.Room, user *matrix.User, content *event.MessageEventContent) (*mautrix.RespSendEvent, error) {
 
 	resp, err := m.AS.Client(user.MXID).SendMessageEvent(ctx, room.MXID, event.EventMessage, content)
 	if err != nil {
@@ -369,7 +368,7 @@ func (m *BridgeKit) SendUserMessageInRoom(ctx context.Context, room *domain.Room
 	return resp, nil
 }
 
-func (m *BridgeKit) SendTimestampedMessageInRoom(ctx context.Context, room *domain.Room, sender *appservice.IntentAPI, content *event.MessageEventContent, ts int64) (*mautrix.RespSendEvent, error) {
+func (m *BridgeKit) SendTimestampedMessageInRoom(ctx context.Context, room *matrix.Room, sender *appservice.IntentAPI, content *event.MessageEventContent, ts int64) (*mautrix.RespSendEvent, error) {
 	intent := sender
 	if intent == nil {
 		intent = room.MainIntent()
@@ -384,7 +383,7 @@ func (m *BridgeKit) SendTimestampedMessageInRoom(ctx context.Context, room *doma
 	return resp, nil
 }
 
-func (m *BridgeKit) SendMessageInRoom(ctx context.Context, room *domain.Room, sender *appservice.IntentAPI, content *event.MessageEventContent) (*mautrix.RespSendEvent, error) {
+func (m *BridgeKit) SendMessageInRoom(ctx context.Context, room *matrix.Room, sender *appservice.IntentAPI, content *event.MessageEventContent) (*mautrix.RespSendEvent, error) {
 	intent := sender
 	if intent == nil {
 		intent = room.MainIntent()
@@ -411,7 +410,7 @@ func (m *BridgeKit) StartBridgeConnector(ctx context.Context, connector BridgeCo
 	m.Main()
 }
 
-func (m *BridgeKit) SetManagementRoom(user *domain.User, room id.RoomID) {
+func (m *BridgeKit) SetManagementRoom(user *matrix.User, room id.RoomID) {
 	fmt.Println("SetManagementRoom - ", user.DisplayName, room)
 	m.Connector.SetManagementRoom(m.parentCtx, user, room)
 }

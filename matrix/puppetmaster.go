@@ -6,8 +6,6 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/dvcrn/matrix-bridgekit/pkg/domain"
-
 	"maunium.net/go/mautrix/bridge"
 	"maunium.net/go/mautrix/id"
 )
@@ -24,11 +22,11 @@ func NewGhostMaster(bridge *bridge.Bridge, localpart string) *GhostMaster {
 	}
 }
 
-func (pm *GhostMaster) NewGhost(remoteID string, displayName, userName string, avatarURL id.ContentURI) *domain.Ghost {
+func (pm *GhostMaster) NewGhost(remoteID string, displayName, userName string, avatarURL id.ContentURI) *Ghost {
 	mxid := id.NewUserID(fmt.Sprintf("%s_%s", pm.localpart, userName), pm.bridge.Config.Homeserver.Domain)
 	fmt.Println("[CreatePuppet] ", userName, mxid.String())
 
-	return &domain.Ghost{
+	return &Ghost{
 		MXID:        mxid,
 		RemoteID:    remoteID,
 		DisplayName: displayName,
@@ -38,12 +36,12 @@ func (pm *GhostMaster) NewGhost(remoteID string, displayName, userName string, a
 	}
 }
 
-func (pm *GhostMaster) LoadGhostIntent(ghost *domain.Ghost) *domain.Ghost {
+func (pm *GhostMaster) LoadGhostIntent(ghost *Ghost) *Ghost {
 	ghost.Intent = pm.bridge.AS.Intent(ghost.MXID)
 	return ghost
 }
 
-func (pm *GhostMaster) UpdateGhostAvatar(ctx context.Context, puppet *domain.Ghost, url string) (id.ContentURI, error) {
+func (pm *GhostMaster) UpdateGhostAvatar(ctx context.Context, puppet *Ghost, url string) (id.ContentURI, error) {
 	bot := pm.bridge.AS.BotClient()
 
 	getResp, err := http.DefaultClient.Get(url)
@@ -68,7 +66,7 @@ func (pm *GhostMaster) UpdateGhostAvatar(ctx context.Context, puppet *domain.Gho
 	return resp.ContentURI, err
 }
 
-func (pm *GhostMaster) UpdateName(ctx context.Context, ghost *domain.Ghost, newName string) bool {
+func (pm *GhostMaster) UpdateName(ctx context.Context, ghost *Ghost, newName string) bool {
 
 	//if ghost.DisplayName == newName {
 	//	return false
