@@ -195,7 +195,7 @@ func (m *BridgeKit) ResetRoomPermission(ctx context.Context, room *matrix.Room, 
 	return nil
 }
 
-func (m *BridgeKit) MarkRoomReadOnly(ctx context.Context, room *matrix.Room, user *matrix.User, markRead bool) error {
+func (m *BridgeKit) MarkRoomReadOnly(ctx context.Context, room *matrix.Room) (*mautrix.RespSendEvent, error) {
 	fmt.Println("[MarkRoomReadOnly] ", room.Name)
 
 	// set everyone to 100 except the current user, effectively takinga way his permission to do anything
@@ -212,16 +212,10 @@ func (m *BridgeKit) MarkRoomReadOnly(ctx context.Context, room *matrix.Room, use
 
 	resp, err := m.Bridge.Bot.SetPowerLevels(ctx, room.MXID, powerLevels)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	if markRead {
-		if err := m.AS.Client(user.MXID).MarkRead(ctx, room.MXID, resp.EventID); err != nil {
-			return err
-		}
-	}
-
-	return nil
+	return resp, nil
 }
 
 func (m *BridgeKit) CreateRoom(ctx context.Context, portal *matrix.Room, user *matrix.User) (*matrix.Room, *mautrix.RespCreateRoom, error) {
