@@ -4,15 +4,23 @@ Build matrix bridges in Go quickly
 
 ## What is this?
 
-BridgeKit is a _opinionated_ wrapper around [mautrix-go](https://github.com/mautrix/go) with the goal of making it easier to build matrix bridges.
+BridgeKit is a _opinionated_ wrapper around [mautrix-go](https://github.com/mautrix/go).
 
 All the heavy lifting is done by mautrix/go, this library just tries to make it quicker to use by providing opinionated abstractions, with the option to always fall back to mautrix-go.
 
 Super WIP
 
+**What this wrapper does**:
+
+- Provide a `Connector` interface that bridges should implement, rather than extending the bridge interface
+- Decouple responsibilities of structs
+  - Switch room/puppet/user from active-record style to domain style (no logic in domain objects)
+  - Move methods that call matrix servers into bridge/roommanager/ghostmaster to make it more clear what has side effects
+- Opinionated pre-configuration to make getting started a tad faster
+
 ## Getting started
 
-Check out the boilerplate on what you have to do. The gist is, implement the `bridgekit.BridgeConnector` and `bridgekit.MatrixRoomEventHandler` interfaces, then load the connector with bridgekit: 
+[Check out the boilerplate](github.com/dvcrn/bridgekit-boilerplate) on what you have to do. The gist is, implement the `bridgekit.BridgeConnector` and `bridgekit.MatrixRoomEventHandler` interfaces, then load the connector with bridgekit:
 
 ```golang
 var _ bridgekit.BridgeConnector = (*MyBridgeConnector)(nil)
@@ -51,7 +59,7 @@ func main() {
 1. Make sure you have bbctl (https://github.com/beeper/bridge-manager) setup
 2. Generate a registration file: `bbctl register -o  registration.yaml sh-mycoolbridge`
 3. Copy example-config.yml to config.yml: `cp internal/example-config.yaml config.yaml`
-4. Fill out the fields in config.yaml with information from registration.yaml: 
+4. Fill out the fields in config.yaml with information from registration.yaml:
    - Set `id`, `url`, `as_token`, `hs_token`, `bot.username`, `address`, `appservice.address`
    - `bot.username` has to match your bridge namespace. If your bridge is `sh-mycoolbridge`, the bot will be `sh-mycoolbridgebot`
    - `address` should match your personal beeper homeserver address that the registration commandg gave you, eg `https://user.eu-plucky-sparrow.edge.beeper.com/davicorn`
@@ -64,13 +72,11 @@ If everything went fine, your bridge should connect and you you should be able t
 
 ## How to basics
 
-
-
 ## Notes
 
 - Bridge can only create things within it's namespace, so for example if your bridge is `sh-mybridge`, all ghosts have to be under `sh-mybridge_xxxxx`
 
-## Glossary 
+## Glossary
 
 - **Room**/**Portal**: A "chat room", doesn't matter what it is. Can be a DM or a group chat, everything is a room
 - **Puppet**/**Ghost**: A remote user
