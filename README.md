@@ -20,7 +20,9 @@ Super WIP
 
 ## Getting started
 
-[Check out the boilerplate](github.com/dvcrn/bridgekit-boilerplate) on what you have to do. The gist is, implement the `bridgekit.BridgeConnector` and `bridgekit.MatrixRoomEventHandler` interfaces, then load the connector with bridgekit:
+[Check out the boilerplate](https://github.com/dvcrn/bridgekit-boilerplate) on what you have to do.
+
+The gist is, implement the `bridgekit.BridgeConnector` and `bridgekit.MatrixRoomEventHandler` interfaces, then load the connector with bridgekit:
 
 ```golang
 var _ bridgekit.BridgeConnector = (*MyBridgeConnector)(nil)
