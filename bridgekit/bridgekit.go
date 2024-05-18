@@ -26,18 +26,36 @@ var (
 )
 
 type ConfigGetter interface {
-	Base() *bridgeconfig.BaseConfig
-	Bridge() bridgeconfig.BridgeConfig
 	DoUpgrade(*configupgrade.Helper)
+	GetPtr(*bridgeconfig.BaseConfig) any
 }
 
-type BridgeKit struct {
-	bridge.Bridge
-	localpart string
-	config    ConfigGetter
-	//BridgeWrapper *matrix.BridgeWrapper
+type BaseConfig struct {
+	*bridgeconfig.BaseConfig
+	//Homeserver bridgeconfig.HomeserverConfig `yaml:"homeserver"`
+	//AppService bridgeconfig.AppserviceConfig `yaml:"appservice"`
+	Bridge bridgeconfig.BridgeConfig `yaml:"bridge"`
+	//Logging    zeroconfig.Config             `yaml:"logging"`
+}
 
-	Config        *bridgeconfig.BaseConfig
+type BridgeKitConfig struct {
+	*bridgeconfig.BaseConfig `yaml:",inline"`
+	Bridge                   bridgeconfig.BridgeConfig `yaml:"bridge"`
+	//Bridge struct{
+	//	SomeKey string `yaml:"some_key"`
+	//} `yaml:"bridge"`
+	//Bridge     bridgeconfig.BridgeConfig      `yaml:"bridge"`
+}
+
+type GenericBridgeKitConfig[T any] struct {
+	*bridgeconfig.BaseConfig `yaml:",inline"`
+	Bridge                   T `yaml:"bridge"`
+}
+
+type BridgeKit[T ConfigGetter] struct {
+	bridge.Bridge
+	localpart     string
+	Config        T
 	exampleConfig string
 	Commands      []commands.Handler
 
@@ -49,21 +67,16 @@ type BridgeKit struct {
 	parentCtxCancel context.CancelFunc
 }
 
-func (m *BridgeKit) GetExampleConfig() string {
+func (m *BridgeKit[T]) GetExampleConfig() string {
 	return m.exampleConfig
 }
 
-func (m *BridgeKit) GetConfigPtr() interface{} {
+func (m *BridgeKit[T]) GetConfigPtr() interface{} {
 	fmt.Println("GetConfigPTR PTR")
-	bridgeConfig := m.config.Bridge()
-
-	m.Config = &m.Bridge.Config
-	m.Config.Bridge = bridgeConfig
-
-	return m.Config
+	return m.Config.GetPtr(&m.Bridge.Config)
 }
 
-func (m *BridgeKit) Init() {
+func (m *BridgeKit[T]) Init() {
 	fmt.Println("[Init]")
 	if err := m.Connector.Init(m.parentCtx); err != nil {
 		fmt.Println("Error initializing connector: ", err)
@@ -80,20 +93,20 @@ func (m *BridgeKit) Init() {
 	)
 }
 
-func (m *BridgeKit) Start() {
+func (m *BridgeKit[T]) Start() {
 	fmt.Println("[Start]")
 
 	m.WaitWebsocketConnected()
 	m.Connector.Start(m.parentCtx)
 }
 
-func (m *BridgeKit) Stop() {
+func (m *BridgeKit[T]) Stop() {
 	fmt.Println("[Stop]")
 	m.parentCtxCancel()
 	m.Connector.Stop()
 }
 
-func (m *BridgeKit) GetIPortal(roomID id.RoomID) bridge.Portal {
+func (m *BridgeKit[T]) GetIPortal(roomID id.RoomID) bridge.Portal {
 	room := m.Connector.GetRoom(m.parentCtx, roomID)
 	if room != nil {
 		m.RoomManager.LoadRoomIntent(room)
@@ -102,12 +115,12 @@ func (m *BridgeKit) GetIPortal(roomID id.RoomID) bridge.Portal {
 	return room
 }
 
-func (m *BridgeKit) GetAllIPortals() []bridge.Portal {
+func (m *BridgeKit[T]) GetAllIPortals() []bridge.Portal {
 	fmt.Println("[GetAllIPortals]")
 	return m.Connector.GetAllRooms(m.parentCtx)
 }
 
-func (m *BridgeKit) GetIUser(id id.UserID, create bool) bridge.User {
+func (m *BridgeKit[T]) GetIUser(id id.UserID, create bool) bridge.User {
 	fmt.Println("[GetIUser] ", id.String(), " create ", create)
 
 	u := m.Connector.GetUser(m.parentCtx, id, create)
@@ -119,28 +132,28 @@ func (m *BridgeKit) GetIUser(id id.UserID, create bool) bridge.User {
 	return u
 }
 
-func (m *BridgeKit) IsGhost(userID id.UserID) bool {
+func (m *BridgeKit[T]) IsGhost(userID id.UserID) bool {
 	fmt.Println("[IsGhost] ", userID.String())
 	return m.Connector.IsGhost(m.parentCtx, userID)
 }
 
-func (m *BridgeKit) GetIGhost(userID id.UserID) bridge.Ghost {
+func (m *BridgeKit[T]) GetIGhost(userID id.UserID) bridge.Ghost {
 	fmt.Println("[GetIGhost] ", userID.String())
 	return m.Connector.GetGhost(m.parentCtx, userID)
 }
 
-func (m *BridgeKit) CreatePrivatePortal(roomID id.RoomID, user bridge.User, ghost bridge.Ghost) {
+func (m *BridgeKit[T]) CreatePrivatePortal(roomID id.RoomID, user bridge.User, ghost bridge.Ghost) {
 	fmt.Println("[CreatePrivatePortal] -- roomID: ", roomID.String(), " user: ", user.GetMXID().String())
 	//TODO implement me
 	panic("implement me")
 }
 
-func (m *BridgeKit) bindRoomHandlers(room *matrix.Room) {
+func (m *BridgeKit[T]) bindRoomHandlers(room *matrix.Room) {
 	fmt.Println("[bindRoomHandlers] ", room.Name)
 	room.MatrixEventHandler = m.handleMatrixRoomEvent
 }
 
-func (m *BridgeKit) handleMatrixRoomEvent(room *matrix.Room, user bridge.User, evt *event.Event) {
+func (m *BridgeKit[T]) handleMatrixRoomEvent(room *matrix.Room, user bridge.User, evt *event.Event) {
 	fmt.Println("[handleMatrixRoomEvent] ", room.Name, " evt: ", evt.Type)
 
 	// check if connector implements RoomEventHandler with type assertion
@@ -156,7 +169,7 @@ func (m *BridgeKit) handleMatrixRoomEvent(room *matrix.Room, user bridge.User, e
 	fmt.Println("No room event handler")
 }
 
-func (m *BridgeKit) ReplyErrorMessage(ctx context.Context, evt *event.Event, room *matrix.Room, err error) (*mautrix.RespSendEvent, error) {
+func (m *BridgeKit[T]) ReplyErrorMessage(ctx context.Context, evt *event.Event, room *matrix.Room, err error) (*mautrix.RespSendEvent, error) {
 
 	content := &event.MessageEventContent{
 		MsgType: event.MsgNotice,
@@ -166,13 +179,13 @@ func (m *BridgeKit) ReplyErrorMessage(ctx context.Context, evt *event.Event, roo
 	return m.SendBotMessageInRoom(ctx, room, content)
 }
 
-func (m *BridgeKit) MarkRead(ctx context.Context, evt *event.Event, room *matrix.Room) error {
+func (m *BridgeKit[T]) MarkRead(ctx context.Context, evt *event.Event, room *matrix.Room) error {
 	fmt.Println("Marking as read: ", evt.ID.String())
 
 	return room.BotIntent.MarkRead(ctx, room.MXID, evt.ID)
 }
 
-func (m *BridgeKit) ResetRoomPermission(ctx context.Context, room *matrix.Room, user *matrix.User, markRead bool) error {
+func (m *BridgeKit[T]) ResetRoomPermission(ctx context.Context, room *matrix.Room, user *matrix.User, markRead bool) error {
 	fmt.Println("[ResetRoomPermission] ", room.Name)
 
 	powerLevels := matrix.NewBasePowerLevels()
@@ -195,7 +208,7 @@ func (m *BridgeKit) ResetRoomPermission(ctx context.Context, room *matrix.Room, 
 	return nil
 }
 
-func (m *BridgeKit) MarkRoomReadOnly(ctx context.Context, room *matrix.Room) (*mautrix.RespSendEvent, error) {
+func (m *BridgeKit[T]) MarkRoomReadOnly(ctx context.Context, room *matrix.Room) (*mautrix.RespSendEvent, error) {
 	fmt.Println("[MarkRoomReadOnly] ", room.Name)
 
 	// set everyone to 100 except the current user, effectively takinga way his permission to do anything
@@ -218,7 +231,7 @@ func (m *BridgeKit) MarkRoomReadOnly(ctx context.Context, room *matrix.Room) (*m
 	return resp, nil
 }
 
-func (m *BridgeKit) CreateRoom(ctx context.Context, portal *matrix.Room, user *matrix.User) (*matrix.Room, *mautrix.RespCreateRoom, error) {
+func (m *BridgeKit[T]) CreateRoom(ctx context.Context, portal *matrix.Room, user *matrix.User) (*matrix.Room, *mautrix.RespCreateRoom, error) {
 	userIdsToInvite := []id.UserID{
 		m.Bot.UserID,
 		user.MXID,
@@ -263,15 +276,15 @@ func (m *BridgeKit) CreateRoom(ctx context.Context, portal *matrix.Room, user *m
 	return portal, room, nil
 }
 
-func (m *BridgeKit) SendBotMessageInRoom(ctx context.Context, room *matrix.Room, content *event.MessageEventContent) (*mautrix.RespSendEvent, error) {
+func (m *BridgeKit[T]) SendBotMessageInRoom(ctx context.Context, room *matrix.Room, content *event.MessageEventContent) (*mautrix.RespSendEvent, error) {
 	return m.SendMessageInRoom(ctx, room, m.Bot, content)
 }
 
-func (m *BridgeKit) SendTimestampedBotMessageInRoom(ctx context.Context, room *matrix.Room, content *event.MessageEventContent, ts int64) (*mautrix.RespSendEvent, error) {
+func (m *BridgeKit[T]) SendTimestampedBotMessageInRoom(ctx context.Context, room *matrix.Room, content *event.MessageEventContent, ts int64) (*mautrix.RespSendEvent, error) {
 	return m.SendTimestampedMessageInRoom(ctx, room, m.Bot, content, ts)
 }
 
-func (m *BridgeKit) BackfillMessages(ctx context.Context, room *matrix.Room, user *matrix.User, msgs []*matrix.Message, notify bool) error {
+func (m *BridgeKit[T]) BackfillMessages(ctx context.Context, room *matrix.Room, user *matrix.User, msgs []*matrix.Message, notify bool) error {
 	batchSending := m.SpecVersions.Supports(mautrix.BeeperFeatureBatchSending)
 
 	// msgContent := format.RenderMarkdown(text, true, false)
@@ -324,7 +337,7 @@ func (m *BridgeKit) BackfillMessages(ctx context.Context, room *matrix.Room, use
 	return nil
 }
 
-func (m *BridgeKit) SendTimestampedMainMessageInRoom(ctx context.Context, room *matrix.Room, sender *appservice.IntentAPI, content event.MessageEventContent, ts int64) (*mautrix.RespSendEvent, error) {
+func (m *BridgeKit[T]) SendTimestampedMainMessageInRoom(ctx context.Context, room *matrix.Room, sender *appservice.IntentAPI, content event.MessageEventContent, ts int64) (*mautrix.RespSendEvent, error) {
 	intent := sender
 	if intent == nil {
 		intent = room.MainIntent()
@@ -339,7 +352,7 @@ func (m *BridgeKit) SendTimestampedMainMessageInRoom(ctx context.Context, room *
 	return resp, nil
 }
 
-func (m *BridgeKit) SendTimestampedUserMessageInRoom(ctx context.Context, room *matrix.Room, user *matrix.User, content *event.MessageEventContent, ts int64) (*mautrix.RespSendEvent, error) {
+func (m *BridgeKit[T]) SendTimestampedUserMessageInRoom(ctx context.Context, room *matrix.Room, user *matrix.User, content *event.MessageEventContent, ts int64) (*mautrix.RespSendEvent, error) {
 	resp, err := m.AS.Client(user.MXID).SendMessageEvent(ctx, room.MXID, event.EventMessage, content, mautrix.ReqSendEvent{
 		Timestamp: ts,
 	})
@@ -351,7 +364,7 @@ func (m *BridgeKit) SendTimestampedUserMessageInRoom(ctx context.Context, room *
 	return resp, nil
 }
 
-func (m *BridgeKit) SendUserMessageInRoom(ctx context.Context, room *matrix.Room, user *matrix.User, content *event.MessageEventContent) (*mautrix.RespSendEvent, error) {
+func (m *BridgeKit[T]) SendUserMessageInRoom(ctx context.Context, room *matrix.Room, user *matrix.User, content *event.MessageEventContent) (*mautrix.RespSendEvent, error) {
 
 	resp, err := m.AS.Client(user.MXID).SendMessageEvent(ctx, room.MXID, event.EventMessage, content)
 	if err != nil {
@@ -362,7 +375,7 @@ func (m *BridgeKit) SendUserMessageInRoom(ctx context.Context, room *matrix.Room
 	return resp, nil
 }
 
-func (m *BridgeKit) SendTimestampedMessageInRoom(ctx context.Context, room *matrix.Room, sender *appservice.IntentAPI, content *event.MessageEventContent, ts int64) (*mautrix.RespSendEvent, error) {
+func (m *BridgeKit[T]) SendTimestampedMessageInRoom(ctx context.Context, room *matrix.Room, sender *appservice.IntentAPI, content *event.MessageEventContent, ts int64) (*mautrix.RespSendEvent, error) {
 	intent := sender
 	if intent == nil {
 		intent = room.MainIntent()
@@ -377,7 +390,7 @@ func (m *BridgeKit) SendTimestampedMessageInRoom(ctx context.Context, room *matr
 	return resp, nil
 }
 
-func (m *BridgeKit) SendMessageInRoom(ctx context.Context, room *matrix.Room, sender *appservice.IntentAPI, content *event.MessageEventContent) (*mautrix.RespSendEvent, error) {
+func (m *BridgeKit[T]) SendMessageInRoom(ctx context.Context, room *matrix.Room, sender *appservice.IntentAPI, content *event.MessageEventContent) (*mautrix.RespSendEvent, error) {
 	intent := sender
 	if intent == nil {
 		intent = room.MainIntent()
@@ -392,31 +405,31 @@ func (m *BridgeKit) SendMessageInRoom(ctx context.Context, room *matrix.Room, se
 	return resp, nil
 }
 
-func (m *BridgeKit) RegisterCommand(cmd commands.Handler) {
+func (m *BridgeKit[T]) RegisterCommand(cmd commands.Handler) {
 	m.Commands = append(m.Commands, cmd)
 }
 
 // StartBridgeConnector sets the given bridge connector and starts the event loop
-func (m *BridgeKit) StartBridgeConnector(ctx context.Context, connector BridgeConnector) {
+func (m *BridgeKit[T]) StartBridgeConnector(ctx context.Context, connector BridgeConnector) {
 	fmt.Println("[StartBridgeConnector] ")
 	m.Connector = connector
 	m.parentCtx, m.parentCtxCancel = context.WithCancel(ctx)
 	m.Main()
 }
 
-func (m *BridgeKit) SetManagementRoom(user *matrix.User, room id.RoomID) {
+func (m *BridgeKit[T]) SetManagementRoom(user *matrix.User, room id.RoomID) {
 	fmt.Println("SetManagementRoom - ", user.DisplayName, room)
 	m.Connector.SetManagementRoom(m.parentCtx, user, room)
 }
 
-func NewBridgeKit(
+func NewBridgeKit[T ConfigGetter](
 	name, localpart, url, description, version string,
-	conf ConfigGetter,
+	conf T,
 	exampleConfig string,
-) *BridgeKit {
-	br := &BridgeKit{
+) *BridgeKit[T] {
+	br := &BridgeKit[T]{
 		localpart:     localpart,
-		config:        conf,
+		Config:        conf,
 		exampleConfig: exampleConfig,
 	}
 	br.Bridge = bridge.Bridge{
