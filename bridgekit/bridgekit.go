@@ -30,28 +30,6 @@ type ConfigGetter interface {
 	GetPtr(*bridgeconfig.BaseConfig) any
 }
 
-type BaseConfig struct {
-	*bridgeconfig.BaseConfig
-	//Homeserver bridgeconfig.HomeserverConfig `yaml:"homeserver"`
-	//AppService bridgeconfig.AppserviceConfig `yaml:"appservice"`
-	Bridge bridgeconfig.BridgeConfig `yaml:"bridge"`
-	//Logging    zeroconfig.Config             `yaml:"logging"`
-}
-
-type BridgeKitConfig struct {
-	*bridgeconfig.BaseConfig `yaml:",inline"`
-	Bridge                   bridgeconfig.BridgeConfig `yaml:"bridge"`
-	//Bridge struct{
-	//	SomeKey string `yaml:"some_key"`
-	//} `yaml:"bridge"`
-	//Bridge     bridgeconfig.BridgeConfig      `yaml:"bridge"`
-}
-
-type GenericBridgeKitConfig[T any] struct {
-	*bridgeconfig.BaseConfig `yaml:",inline"`
-	Bridge                   T `yaml:"bridge"`
-}
-
 type BridgeKit[T ConfigGetter] struct {
 	bridge.Bridge
 	localpart     string
@@ -67,15 +45,18 @@ type BridgeKit[T ConfigGetter] struct {
 	parentCtxCancel context.CancelFunc
 }
 
+// GetExampleConfig returns the example configuration for the BridgeKit.
 func (m *BridgeKit[T]) GetExampleConfig() string {
 	return m.exampleConfig
 }
 
+// GetConfigPtr returns a pointer to the configuration object associated with the BridgeKit.
 func (m *BridgeKit[T]) GetConfigPtr() interface{} {
 	fmt.Println("GetConfigPTR PTR")
 	return m.Config.GetPtr(&m.Bridge.Config)
 }
 
+// Init initializes the BridgeKit, including the Connector, GhostMaster, RoomManager, and CommandProcessor.
 func (m *BridgeKit[T]) Init() {
 	fmt.Println("[Init]")
 	if err := m.Connector.Init(m.parentCtx); err != nil {
@@ -93,6 +74,9 @@ func (m *BridgeKit[T]) Init() {
 	)
 }
 
+// Start initializes the BridgeKit and starts the connector.
+// It first waits for the websocket connection to be established,
+// then starts the connector
 func (m *BridgeKit[T]) Start() {
 	fmt.Println("[Start]")
 
@@ -100,6 +84,7 @@ func (m *BridgeKit[T]) Start() {
 	m.Connector.Start(m.parentCtx)
 }
 
+// Stop stops the BridgeKit and its underlying Connector.
 func (m *BridgeKit[T]) Stop() {
 	fmt.Println("[Stop]")
 	m.parentCtxCancel()
@@ -148,6 +133,8 @@ func (m *BridgeKit[T]) CreatePrivatePortal(roomID id.RoomID, user bridge.User, g
 	panic("implement me")
 }
 
+// bindRoomHandlers binds the matrix room event handler for the given room.
+// this function is needed to attach room handlers to room objects that are freshly created
 func (m *BridgeKit[T]) bindRoomHandlers(room *matrix.Room) {
 	fmt.Println("[bindRoomHandlers] ", room.Name)
 	room.MatrixEventHandler = m.handleMatrixRoomEvent
@@ -169,6 +156,8 @@ func (m *BridgeKit[T]) handleMatrixRoomEvent(room *matrix.Room, user bridge.User
 	fmt.Println("No room event handler")
 }
 
+// ReplyErrorMessage sends a notice message in the given room with the error message from the provided event.
+// The message will be sent as a reply to the original event.
 func (m *BridgeKit[T]) ReplyErrorMessage(ctx context.Context, evt *event.Event, room *matrix.Room, err error) (*mautrix.RespSendEvent, error) {
 
 	content := &event.MessageEventContent{
@@ -179,13 +168,19 @@ func (m *BridgeKit[T]) ReplyErrorMessage(ctx context.Context, evt *event.Event, 
 	return m.SendBotMessageInRoom(ctx, room, content)
 }
 
+// MarkRead marks the given event as read in the specified Matrix room.
+// It uses the bot's intent to mark the event as read, indicating that the bridge has read the event.
 func (m *BridgeKit[T]) MarkRead(ctx context.Context, evt *event.Event, room *matrix.Room) error {
 	fmt.Println("Marking as read: ", evt.ID.String())
 
 	return room.BotIntent.MarkRead(ctx, room.MXID, evt.ID)
 }
 
-func (m *BridgeKit[T]) ResetRoomPermission(ctx context.Context, room *matrix.Room, user *matrix.User, markRead bool) error {
+// ResetRoomPermission resets the power levels for a given room, setting the bridge bot's power level to 9001 and the main intent user's power level to 100.
+//
+// ctx is the context to use for the operation.
+// room is the Matrix room to reset the permissions for.
+func (m *BridgeKit[T]) ResetRoomPermission(ctx context.Context, room *matrix.Room) (*mautrix.RespSendEvent, error) {
 	fmt.Println("[ResetRoomPermission] ", room.Name)
 
 	powerLevels := matrix.NewBasePowerLevels()
@@ -196,18 +191,14 @@ func (m *BridgeKit[T]) ResetRoomPermission(ctx context.Context, room *matrix.Roo
 
 	resp, err := m.Bridge.Bot.SetPowerLevels(ctx, room.MXID, powerLevels)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	if markRead {
-		if err := m.AS.Client(user.MXID).MarkRead(ctx, room.MXID, resp.EventID); err != nil {
-			return err
-		}
-	}
-
-	return nil
+	return resp, nil
 }
 
+// MarkRoomReadOnly sets the power levels in the given Matrix room to effectively make it read-only for the current user.
+// This is done by setting the default power level to 101 and disabling reactions and messages for all users except the ghost and bot.
 func (m *BridgeKit[T]) MarkRoomReadOnly(ctx context.Context, room *matrix.Room) (*mautrix.RespSendEvent, error) {
 	fmt.Println("[MarkRoomReadOnly] ", room.Name)
 
@@ -231,12 +222,16 @@ func (m *BridgeKit[T]) MarkRoomReadOnly(ctx context.Context, room *matrix.Room) 
 	return resp, nil
 }
 
+// CreateRoom creates a new Matrix room for the given portal and user. It invites the bot and the user to the room,
+// sets the appropriate power levels, and updates the portal's MXID with the new room ID. It also updates the display names of any ghost users associated with the portal.
 func (m *BridgeKit[T]) CreateRoom(ctx context.Context, portal *matrix.Room, user *matrix.User) (*matrix.Room, *mautrix.RespCreateRoom, error) {
 	userIdsToInvite := []id.UserID{
 		m.Bot.UserID,
 		user.MXID,
 	}
 	userIdsToInvite = append(userIdsToInvite, portal.GhostUserIDs()...)
+
+	fmt.Println("Creating room with ids: ", userIdsToInvite)
 
 	powerLevels := matrix.NewBasePowerLevels()
 	powerLevels.Users = map[id.UserID]int{
@@ -270,20 +265,32 @@ func (m *BridgeKit[T]) CreateRoom(ctx context.Context, portal *matrix.Room, user
 	}
 
 	for _, ghost := range portal.Ghosts {
-		m.GhostMaster.UpdateName(ctx, ghost, ghost.GetDisplayname())
+		if err := m.GhostMaster.UpdateName(ctx, ghost, ghost.GetDisplayname()); err != nil {
+			fmt.Println("Error updating ghost name: ", err)
+		} else {
+			fmt.Println("Updated ghost name: ", ghost.GetDisplayname())
+		}
 	}
 
 	return portal, room, nil
 }
 
+// SendBotMessageInRoom sends a message in the given room on behalf of the bot.
+// The content of the message is specified by the provided MessageEventContent.
+// This is a convenience method that calls SendMessageInRoom with the bot as the sender.
 func (m *BridgeKit[T]) SendBotMessageInRoom(ctx context.Context, room *matrix.Room, content *event.MessageEventContent) (*mautrix.RespSendEvent, error) {
 	return m.SendMessageInRoom(ctx, room, m.Bot, content)
 }
 
+// SendTimestampedBotMessageInRoom sends a timestamped message from the bot to the given room.
 func (m *BridgeKit[T]) SendTimestampedBotMessageInRoom(ctx context.Context, room *matrix.Room, content *event.MessageEventContent, ts int64) (*mautrix.RespSendEvent, error) {
 	return m.SendTimestampedMessageInRoom(ctx, room, m.Bot, content, ts)
 }
 
+// BackfillMessages backfills a list of messages into the given Matrix room. If the Beeper feature for batch sending is supported, it will use that to send the messages in a single request. Otherwise, it will send each message individually.
+//
+// The `notify` parameter controls whether a notification should be sent for the backfilled messages.
+// If `notify` is set to `true`, messages will not be marked as read
 func (m *BridgeKit[T]) BackfillMessages(ctx context.Context, room *matrix.Room, user *matrix.User, msgs []*matrix.Message, notify bool) error {
 	batchSending := m.SpecVersions.Supports(mautrix.BeeperFeatureBatchSending)
 
@@ -317,26 +324,30 @@ func (m *BridgeKit[T]) BackfillMessages(ctx context.Context, room *matrix.Room, 
 		_, err := room.BotIntent.BeeperBatchSend(ctx, room.MXID, req)
 		if err != nil {
 			fmt.Println("Error backfilling message: ", err)
+			goto manualBackfill
 			return err
 		}
 
-	} else {
-		for _, msg := range msgs {
-			intent := room.MainIntent()
-			if msg.FromMXID == user.MXID {
-				intent = user.DoublePuppetIntent
-			}
+		return nil
+	}
 
-			_, err := m.SendTimestampedMainMessageInRoom(ctx, room, intent, msg.Content, msg.Timestamp)
-			if err != nil {
-				fmt.Println("err while inserting message: ", err.Error())
-			}
+manualBackfill:
+	for _, msg := range msgs {
+		intent := room.MainIntent()
+		if msg.FromMXID == user.MXID {
+			intent = user.DoublePuppetIntent
+		}
+
+		_, err := m.SendTimestampedMainMessageInRoom(ctx, room, intent, msg.Content, msg.Timestamp)
+		if err != nil {
+			fmt.Println("err while inserting message: ", err.Error())
 		}
 	}
 
 	return nil
 }
 
+// SendTimestampedMainMessageInRoom sends a message event with the given content and timestamp to the specified room, using the provided sender intent if not nil, or the room's main intent if sender is nil.
 func (m *BridgeKit[T]) SendTimestampedMainMessageInRoom(ctx context.Context, room *matrix.Room, sender *appservice.IntentAPI, content event.MessageEventContent, ts int64) (*mautrix.RespSendEvent, error) {
 	intent := sender
 	if intent == nil {
@@ -352,6 +363,7 @@ func (m *BridgeKit[T]) SendTimestampedMainMessageInRoom(ctx context.Context, roo
 	return resp, nil
 }
 
+// SendTimestampedUserMessageInRoom sends a message event with the given content and timestamp from the specified user in the given room.
 func (m *BridgeKit[T]) SendTimestampedUserMessageInRoom(ctx context.Context, room *matrix.Room, user *matrix.User, content *event.MessageEventContent, ts int64) (*mautrix.RespSendEvent, error) {
 	resp, err := m.AS.Client(user.MXID).SendMessageEvent(ctx, room.MXID, event.EventMessage, content, mautrix.ReqSendEvent{
 		Timestamp: ts,
@@ -364,6 +376,8 @@ func (m *BridgeKit[T]) SendTimestampedUserMessageInRoom(ctx context.Context, roo
 	return resp, nil
 }
 
+// SendUserMessageInRoom sends a message event from the given user to the given room.
+// The content of the message is specified by the provided MessageEventContent.
 func (m *BridgeKit[T]) SendUserMessageInRoom(ctx context.Context, room *matrix.Room, user *matrix.User, content *event.MessageEventContent) (*mautrix.RespSendEvent, error) {
 
 	resp, err := m.AS.Client(user.MXID).SendMessageEvent(ctx, room.MXID, event.EventMessage, content)
@@ -375,6 +389,8 @@ func (m *BridgeKit[T]) SendUserMessageInRoom(ctx context.Context, room *matrix.R
 	return resp, nil
 }
 
+// SendTimestampedMessageInRoom sends a message event with the given timestamp to the specified Matrix room, using the provided sender intent.
+// If the sender intent is nil, the room's main intent will be used instead.
 func (m *BridgeKit[T]) SendTimestampedMessageInRoom(ctx context.Context, room *matrix.Room, sender *appservice.IntentAPI, content *event.MessageEventContent, ts int64) (*mautrix.RespSendEvent, error) {
 	intent := sender
 	if intent == nil {
@@ -390,6 +406,8 @@ func (m *BridgeKit[T]) SendTimestampedMessageInRoom(ctx context.Context, room *m
 	return resp, nil
 }
 
+// SendMessageInRoom sends a message event to the given Matrix room using the provided sender.
+// If no sender is provided, the room's main intent is used.
 func (m *BridgeKit[T]) SendMessageInRoom(ctx context.Context, room *matrix.Room, sender *appservice.IntentAPI, content *event.MessageEventContent) (*mautrix.RespSendEvent, error) {
 	intent := sender
 	if intent == nil {
@@ -405,6 +423,7 @@ func (m *BridgeKit[T]) SendMessageInRoom(ctx context.Context, room *matrix.Room,
 	return resp, nil
 }
 
+// RegisterCommand adds a new chat command handler.
 func (m *BridgeKit[T]) RegisterCommand(cmd commands.Handler) {
 	m.Commands = append(m.Commands, cmd)
 }

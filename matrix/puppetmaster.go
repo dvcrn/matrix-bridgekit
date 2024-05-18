@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 
+	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/bridge"
 	"maunium.net/go/mautrix/id"
 )
@@ -41,7 +42,13 @@ func (pm *GhostMaster) LoadGhostIntent(ghost *Ghost) *Ghost {
 	return ghost
 }
 
-func (pm *GhostMaster) UpdateGhostAvatar(ctx context.Context, puppet *Ghost, url string) (id.ContentURI, error) {
+func (pm *GhostMaster) AsGhost(ghost *Ghost) *appservice.IntentAPI {
+	intent := pm.bridge.AS.Intent(ghost.MXID)
+	fmt.Println("AsGhost: ", ghost.MXID, intent.UserID)
+	return intent
+}
+
+func (pm *GhostMaster) UpdateGhostAvatar(ctx context.Context, ghost *Ghost, url string) (id.ContentURI, error) {
 	bot := pm.bridge.AS.BotClient()
 
 	getResp, err := http.DefaultClient.Get(url)
@@ -60,24 +67,26 @@ func (pm *GhostMaster) UpdateGhostAvatar(ctx context.Context, puppet *Ghost, url
 	if err != nil {
 		return id.ContentURI{}, fmt.Errorf("failed to upload avatar to Matrix: %w", err)
 	}
+	fmt.Println("Uploaded image to matrix servers -- ", resp.ContentURI.String())
 
-	err = puppet.DefaultIntent().SetAvatarURL(ctx, resp.ContentURI)
+	fmt.Println("puppet intent: ", ghost.DefaultIntent().UserID)
+
+	err = pm.AsGhost(ghost).SetAvatarURL(ctx, resp.ContentURI)
 
 	return resp.ContentURI, err
 }
-
-func (pm *GhostMaster) UpdateName(ctx context.Context, ghost *Ghost, newName string) bool {
+func (pm *GhostMaster) UpdateName(ctx context.Context, ghost *Ghost, newName string) error {
 
 	//if ghost.DisplayName == newName {
 	//	return false
 	//}
 
 	ghost.DisplayName = newName
-	err := ghost.DefaultIntent().SetDisplayName(ctx, newName)
+	err := pm.AsGhost(ghost).SetDisplayName(ctx, newName)
 	if err != nil {
 		fmt.Sprintf("could not update name: ", err.Error())
-		return false
+		return err
 	}
 
-	return true
+	return nil
 }

@@ -79,7 +79,7 @@ func (u *User) GetManagementRoomID() id.RoomID {
 
 // GetPermissionLevel implements bridge.User.
 func (u *User) GetPermissionLevel() bridgeconfig.PermissionLevel {
-	fmt.Println("[GetPermissionLevel] ", u.PermissionLevel)
+	fmt.Println("[GetPermissionLevel "+u.DisplayName+"] ", u.PermissionLevel)
 	return u.PermissionLevel
 }
 
