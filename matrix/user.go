@@ -8,11 +8,13 @@ import (
 
 	"maunium.net/go/mautrix/bridge"
 	"maunium.net/go/mautrix/bridge/bridgeconfig"
+	"maunium.net/go/mautrix/bridge/commands"
 	"maunium.net/go/mautrix/id"
 )
 
 var _ bridge.User = &User{}
 var _ bridge.DoublePuppet = (*User)(nil)
+var _ commands.CommandingUser = (*User)(nil)
 
 type SetManagementRoomHandler func(*User, id.RoomID)
 
@@ -28,7 +30,20 @@ type User struct {
 	DoublePuppetIntent *appservice.IntentAPI        `json:"-"`
 	AccessToken        string                       `json:"access_token,omitempty"`
 
+	CommandState             *commands.CommandState   `json:"-"`
 	SetManagementRoomHandler SetManagementRoomHandler `json:"-"`
+}
+
+// GetCommandState implements commands.CommandingUser.
+func (u *User) GetCommandState() *commands.CommandState {
+	fmt.Println("GetCommandState ", u.CommandState)
+	return u.CommandState
+}
+
+// SetCommandState implements commands.CommandingUser.
+func (u *User) SetCommandState(c *commands.CommandState) {
+	fmt.Println("SetCommandState ", c)
+	u.CommandState = c
 }
 
 // -- double puppet

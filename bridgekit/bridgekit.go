@@ -170,9 +170,8 @@ func (m *BridgeKit[T]) ReplyErrorMessage(ctx context.Context, evt *event.Event, 
 
 // MarkRead marks the given event as read in the specified Matrix room.
 // It uses the bot's intent to mark the event as read, indicating that the bridge has read the event.
-func (m *BridgeKit[T]) MarkRead(ctx context.Context, evt *event.Event, room *matrix.Room) error {
+func (m *BridgeKit[T]) MarkBotRead(ctx context.Context, room *matrix.Room, evt *event.Event) error {
 	fmt.Println("Marking as read: ", evt.ID.String())
-
 	return room.BotIntent.MarkRead(ctx, room.MXID, evt.ID)
 }
 
@@ -265,7 +264,7 @@ func (m *BridgeKit[T]) CreateRoom(ctx context.Context, portal *matrix.Room, user
 	}
 
 	for _, ghost := range portal.Ghosts {
-		if err := m.GhostMaster.UpdateName(ctx, ghost, ghost.GetDisplayname()); err != nil {
+		if err := m.GhostMaster.UpdateGhostName(ctx, ghost, ghost.GetDisplayname()); err != nil {
 			fmt.Println("Error updating ghost name: ", err)
 		} else {
 			fmt.Println("Updated ghost name: ", ghost.GetDisplayname())
@@ -297,15 +296,21 @@ func (m *BridgeKit[T]) BackfillMessages(ctx context.Context, room *matrix.Room, 
 	// msgContent := format.RenderMarkdown(text, true, false)
 	evs := []*event.Event{}
 	for _, msg := range msgs {
+		content := event.Content{
+			Parsed: msg.Content,
+		}
+
+		if user.DoublePuppetIntent != nil {
+			room.BotIntent.AddDoublePuppetValue(&content)
+		}
+
 		evs = append(evs, &event.Event{
 			Sender:    msg.FromMXID,
 			Type:      event.EventMessage,
 			Timestamp: msg.Timestamp,
 			RoomID:    msg.RoomID,
-			Content: event.Content{
-				Parsed: msg.Content,
-			},
-			ToUserID: msg.ToMXID,
+			Content:   content,
+			ToUserID:  msg.ToMXID,
 		})
 	}
 
@@ -365,9 +370,7 @@ func (m *BridgeKit[T]) SendTimestampedMainMessageInRoom(ctx context.Context, roo
 
 // SendTimestampedUserMessageInRoom sends a message event with the given content and timestamp from the specified user in the given room.
 func (m *BridgeKit[T]) SendTimestampedUserMessageInRoom(ctx context.Context, room *matrix.Room, user *matrix.User, content *event.MessageEventContent, ts int64) (*mautrix.RespSendEvent, error) {
-	resp, err := m.AS.Client(user.MXID).SendMessageEvent(ctx, room.MXID, event.EventMessage, content, mautrix.ReqSendEvent{
-		Timestamp: ts,
-	})
+	resp, err := m.GhostMaster.AsUserGhost(ctx, user).SendMassagedMessageEvent(ctx, room.MXID, event.EventMessage, content, ts)
 	if err != nil {
 		fmt.Println("Error sending message: ", err)
 		return nil, err
@@ -379,8 +382,7 @@ func (m *BridgeKit[T]) SendTimestampedUserMessageInRoom(ctx context.Context, roo
 // SendUserMessageInRoom sends a message event from the given user to the given room.
 // The content of the message is specified by the provided MessageEventContent.
 func (m *BridgeKit[T]) SendUserMessageInRoom(ctx context.Context, room *matrix.Room, user *matrix.User, content *event.MessageEventContent) (*mautrix.RespSendEvent, error) {
-
-	resp, err := m.AS.Client(user.MXID).SendMessageEvent(ctx, room.MXID, event.EventMessage, content)
+	resp, err := m.GhostMaster.AsUserGhost(ctx, user).SendMessageEvent(ctx, room.MXID, event.EventMessage, content)
 	if err != nil {
 		fmt.Println("Error sending message: ", err)
 		return nil, err
