@@ -28,6 +28,7 @@ var (
 type ConfigGetter interface {
 	DoUpgrade(*configupgrade.Helper)
 	GetPtr(*bridgeconfig.BaseConfig) any
+	Bridge() bridgeconfig.BridgeConfig
 }
 
 type BridgeKit[T ConfigGetter] struct {
@@ -223,7 +224,7 @@ func (m *BridgeKit[T]) MarkRoomReadOnly(ctx context.Context, room *matrix.Room) 
 
 // CreateRoom creates a new Matrix room for the given portal and user. It invites the bot and the user to the room,
 // sets the appropriate power levels, and updates the portal's MXID with the new room ID. It also updates the display names of any ghost users associated with the portal.
-func (m *BridgeKit[T]) CreateRoom(ctx context.Context, portal *matrix.Room, user *matrix.User) (*matrix.Room, *mautrix.RespCreateRoom, error) {
+func (m *BridgeKit[T]) CreateRoom(ctx context.Context, portal *matrix.Room, user *matrix.User, avatarURL id.ContentURI) (*matrix.Room, *mautrix.RespCreateRoom, error) {
 	userIdsToInvite := []id.UserID{
 		m.Bot.UserID,
 		user.MXID,
@@ -238,6 +239,36 @@ func (m *BridgeKit[T]) CreateRoom(ctx context.Context, portal *matrix.Room, user
 		m.Bridge.Bot.UserID:        9001,
 	}
 
+	initialState := []*event.Event{{
+		Type:    event.StatePowerLevels,
+		Content: event.Content{Parsed: powerLevels},
+	}}
+
+	if m.Config.Bridge().GetEncryptionConfig().Default {
+		evt := &event.EncryptionEventContent{Algorithm: id.AlgorithmMegolmV1}
+		if rot := m.Config.Bridge().GetEncryptionConfig().Rotation; rot.EnableCustom {
+			evt.RotationPeriodMillis = rot.Milliseconds
+			evt.RotationPeriodMessages = rot.Messages
+		}
+
+		initialState = append(initialState, &event.Event{
+			Type: event.StateEncryption,
+			Content: event.Content{
+				Parsed: evt,
+			},
+		})
+		portal.Encrypted = true
+	}
+
+	if !avatarURL.IsEmpty() {
+		initialState = append(initialState, &event.Event{
+			Type: event.StateRoomAvatar,
+			Content: event.Content{
+				Parsed: &event.RoomAvatarEventContent{URL: avatarURL},
+			},
+		})
+	}
+
 	req := &mautrix.ReqCreateRoom{
 		Visibility:            "private",
 		Name:                  portal.Name,
@@ -247,6 +278,7 @@ func (m *BridgeKit[T]) CreateRoom(ctx context.Context, portal *matrix.Room, user
 		IsDirect:              portal.IsPrivateChat(),
 		BeeperAutoJoinInvites: true,
 		PowerLevelOverride:    powerLevels,
+		InitialState:          initialState,
 	}
 
 	room, err := m.Bridge.Bot.CreateRoom(ctx, req)
