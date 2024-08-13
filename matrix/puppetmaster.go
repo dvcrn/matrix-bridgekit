@@ -41,15 +41,15 @@ func (pm *GhostMaster) NewGhost(remoteID string, displayName, userName string, a
 		RemoteID:    remoteID,
 		DisplayName: displayName,
 		UserName:    userName,
-		Intent:      pm.bridge.AS.Intent(mxid),
 		AvatarURL:   avatarURL,
+		ghostMaster: pm,
 	}
 }
 
-// LoadGhostIntent loads the intent for the given ghost and fills it into the struct.
-// DEPRECATED: use AsGhost instead.
-func (pm *GhostMaster) LoadGhostIntent(ghost *Ghost) *Ghost {
-	ghost.Intent = pm.bridge.AS.Intent(ghost.MXID)
+// LoadGhost loads the intent for the given ghost and fills it into the struct.
+// Deprecated: Use GhostMaster.AsGhost instead
+func (pm *GhostMaster) LoadGhost(ghost *Ghost) *Ghost {
+	ghost.ghostMaster = pm
 	return ghost
 }
 
@@ -65,11 +65,81 @@ func (pm *GhostMaster) HasDoublePuppet(user *User) bool {
 	return userGhostConfig.doublePuppetIntent != nil
 }
 
+// HasUserGhost checks if we currently have any ghost information available for the given user
+// Effectively checking whether a setup for the user has been completed
+func (pm *GhostMaster) HasUserGhost(user *User) bool {
+	userGhostConfig, ok := pm.userGhostConfig[user.MXID]
+	if !ok {
+		return false
+	}
+
+	return userGhostConfig.ghost != nil
+}
+
+// AsRoomGhost returns an intent to impersonate the main ghost of a room
+// func (pm *GhostMaster) AsRoomGhostExcluding(room *Room, idsToExclude ...id.UserID) *appservice.IntentAPI {
+// 	if room.Ghosts == nil || len(room.Ghosts) == 0 {
+// 		return nil
+// 	}
+
+// 	filteredGhosts := []*Ghost{}
+// 	for _, ghost := range room.Ghosts {
+// 		for _, exid := range idsToExclude {
+// 			if ghost.GetMXID() == exid {
+// 				goto next
+// 			}
+// 		}
+
+// 		filteredGhosts = append(filteredGhosts, ghost)
+// 	next:
+// 	}
+
+// 	if len(filteredGhosts) == 0 {
+// 		fmt.Println("no ghosts after filtering")
+// 		return nil
+// 	}
+
+// 	return pm.AsGhost(filteredGhosts[0])
+// }
+
+// AsRoomGhost returns an intent to impersonate the main ghost of a room
+// If there is no clear main ghost, such as if there are more than 1 present,
+// this will return the bot intent
+func (pm *GhostMaster) AsRoomGhost(room *Room) *appservice.IntentAPI {
+	if room.Ghosts == nil || len(room.Ghosts) != 1 {
+		return pm.AsBot()
+	}
+
+	return pm.AsGhost(room.Ghosts[0])
+}
+
+// AsRoomGhostByID returns an intent to impersonate the given ghost of a room
+// If no ghosts exist, nil is returned
+func (pm *GhostMaster) AsRoomGhostByID(room *Room, userID id.UserID) *appservice.IntentAPI {
+	if room.Ghosts == nil || len(room.Ghosts) == 0 {
+		return nil
+	}
+
+	for _, ghost := range room.Ghosts {
+		if ghost.GetMXID() == userID {
+			return pm.AsGhost(ghost)
+		}
+	}
+
+	return nil
+}
+
 // AsGhost returns an intent to impersonate the given ghost
 func (pm *GhostMaster) AsGhost(ghost *Ghost) *appservice.IntentAPI {
 	intent := pm.bridge.AS.Intent(ghost.MXID)
 	fmt.Println("AsGhost: ", ghost.MXID, intent.UserID)
 	return intent
+}
+
+// AsBot is returning an intent to impersonate the bridge bot
+// This is a helper method that wraps bridge.Bot
+func (pm *GhostMaster) AsBot() *appservice.IntentAPI {
+	return pm.bridge.AS.BotIntent()
 }
 
 // AsUserGhost checks if the user has a doublePuppet intent.
@@ -121,8 +191,6 @@ func (pm *GhostMaster) UploadGhostAvatar(ctx context.Context, ghost *Ghost, url 
 		return id.ContentURI{}, fmt.Errorf("failed to upload avatar to Matrix: %w", err)
 	}
 	fmt.Println("Uploaded image to matrix servers -- ", resp.ContentURI.String())
-
-	fmt.Println("puppet intent: ", ghost.DefaultIntent().UserID)
 
 	err = pm.AsGhost(ghost).SetAvatarURL(ctx, resp.ContentURI)
 

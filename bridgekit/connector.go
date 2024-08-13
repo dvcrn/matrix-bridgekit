@@ -37,4 +37,7 @@ type BridgeConnector interface {
 type MatrixRoomEventHandler interface {
 	// HandleMatrixRoomEvent is the callback to handle matrix events within a specific room.
 	HandleMatrixRoomEvent(ctx context.Context, room *matrix.Room, user bridge.User, evt *event.Event) error
+
+	// HandleMatrixRoomMemberEvent is called when a specific room is marked as encrypted
+	HandleMatrixMarkEncrypted(ctx context.Context, room *matrix.Room) error
 }

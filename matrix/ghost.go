@@ -1,8 +1,6 @@
 package matrix
 
 import (
-	"fmt"
-
 	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/bridge"
 	"maunium.net/go/mautrix/id"
@@ -18,11 +16,10 @@ type Ghost struct {
 	UserName    string        `json:"user_name,omitempty"`
 	AvatarURL   id.ContentURI `json:"avatar_url,omitempty"`
 
-	Intent *appservice.IntentAPI `json:"-"`
+	ghostMaster *GhostMaster `json:"-"`
 }
 
 func (g *Ghost) GetDisplayname() string {
-	fmt.Println("Displayname: ", g.DisplayName)
 	return g.DisplayName
 }
 
@@ -31,28 +28,27 @@ func (g *Ghost) GetAvatarURL() id.ContentURI {
 }
 
 func (g *Ghost) CustomIntent() *appservice.IntentAPI {
-	//TODO implement me
 	panic("[CustomIntent] implement me")
 }
 
 func (g *Ghost) SwitchCustomMXID(accessToken string, userID id.UserID) error {
-	//TODO implement me
 	panic("[SwitchCustomMXID] implement me")
 }
 
 func (g *Ghost) ClearCustomMXID() {
-	//TODO implement me
 	panic("[ClearCustomMXID] implement me")
 }
 
+// DefaultIntent gets the intent to act as this ghost
+// Deprecated: use PuppetMaster.As
 func (g *Ghost) DefaultIntent() *appservice.IntentAPI {
-	return g.Intent
-	//TODO implement me
-	//panic("implement me")
+	if g.ghostMaster == nil {
+		return nil
+	}
+
+	return g.ghostMaster.AsGhost(g)
 }
 
 func (g *Ghost) GetMXID() id.UserID {
 	return g.MXID
-	//TODO implement me
-	//panic("implement me")
 }

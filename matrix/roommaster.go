@@ -15,19 +15,32 @@ import (
 )
 
 type RoomManager struct {
-	bridge      *bridge.Bridge
-	ghostMaster *GhostMaster
+	bridge           *bridge.Bridge
+	ghostMaster      *GhostMaster
+	roomEventHandler RoomEventHandler
 }
 
-func NewRoomManager(bridge *bridge.Bridge, gm *GhostMaster) *RoomManager {
+func NewRoomManager(bridge *bridge.Bridge, gm *GhostMaster, roomEventHandler RoomEventHandler) *RoomManager {
 	return &RoomManager{
-		bridge:      bridge,
-		ghostMaster: gm,
+		bridge:           bridge,
+		ghostMaster:      gm,
+		roomEventHandler: roomEventHandler,
 	}
 }
 
 func (rm *RoomManager) NewRoom(name string, topic string, ghosts ...*Ghost) *Room {
-	return NewRoom(name, topic, rm.bridge.Bot, ghosts...)
+	return &Room{
+		RemotedID:   "",
+		MXID:        "",
+		Name:        name,
+		Topic:       topic,
+		Encrypted:   rm.bridge.Config.Bridge.GetEncryptionConfig().Allow && rm.bridge.Config.Bridge.GetEncryptionConfig().Default,
+		PrivateChat: len(ghosts) == 1,
+		BotIntent:   rm.bridge.Bot,
+		Ghosts:      ghosts,
+
+		roomEventHandler: rm.roomEventHandler,
+	}
 }
 
 // CreatePersonalSpace creates a new private room as "space" for the given user with the specified name and topic.
@@ -101,6 +114,12 @@ func (rm *RoomManager) AddUserToRoom(ctx context.Context, roomID id.RoomID, user
 	return nil
 }
 
+// SetRoomName updates the room name
+func (rm *RoomManager) SetRoomName(ctx context.Context, room *Room, intent *appservice.IntentAPI, name string) error {
+	_, err := intent.SetRoomName(ctx, room.MXID, name)
+	return err
+}
+
 // SetRoomAvatar sets the avatar for the given room using the provided intent API and content URI.
 func (rm *RoomManager) SetRoomAvatar(ctx context.Context, room *Room, intent *appservice.IntentAPI, url id.ContentURI) error {
 	_, err := intent.SetRoomAvatar(ctx, room.MXID, url)
@@ -142,13 +161,23 @@ func (rm *RoomManager) UploadRoomAvatar(ctx context.Context, room *Room, intent 
 	return resp.ContentURI, err
 }
 
-// LoadRoomIntent loads the bot intent for the given room and loads the ghost intents for any ghosts in the room.
-// This method is used when a room is fershly created and has no intent information attached yet
-func (rm *RoomManager) LoadRoomIntent(room *Room) {
+// LoadRoom loads the bot intent for the given room and loads the ghost intents for any ghosts in the room.
+// This method is used when a room is freshly created and has no intent information attached yet
+func (rm *RoomManager) LoadRoom(room *Room) {
 	if room.BotIntent == nil {
 		room.BotIntent = rm.bridge.Bot
 	}
+
 	for _, ghost := range room.Ghosts {
-		rm.ghostMaster.LoadGhostIntent(ghost)
+		rm.ghostMaster.LoadGhost(ghost)
 	}
+
+	if room.roomEventHandler == nil {
+		room.roomEventHandler = rm.roomEventHandler
+	}
+}
+
+func (rm *RoomManager) EncryptRoom(ctx context.Context, room *Room) {
+	content := &event.EncryptionEventContent{Algorithm: "m.megolm.v1.aes-sha2"}
+	rm.bridge.Bot.SendStateEvent(ctx, room.MXID, event.StateEncryption, "", content)
 }
