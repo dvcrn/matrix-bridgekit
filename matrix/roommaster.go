@@ -54,7 +54,7 @@ func (rm *RoomManager) CreatePersonalSpace(ctx context.Context, user *User, name
 			Type: event.StateRoomAvatar,
 			Content: event.Content{
 				Parsed: &event.RoomAvatarEventContent{
-					URL: rm.bridge.Config.AppService.Bot.ParsedAvatar,
+					URL: rm.bridge.Config.AppService.Bot.ParsedAvatar.CUString(),
 				},
 			},
 		}},

@@ -27,7 +27,7 @@ var (
 )
 
 type ConfigGetter interface {
-	DoUpgrade(*configupgrade.Helper)
+	DoUpgrade(configupgrade.Helper)
 	GetPtr(*bridgeconfig.BaseConfig) any
 	Bridge() bridgeconfig.BridgeConfig
 }
@@ -289,7 +289,7 @@ func (m *BridgeKit[T]) CreateRoom(ctx context.Context, portal *matrix.Room, user
 		initialState = append(initialState, &event.Event{
 			Type: event.StateRoomAvatar,
 			Content: event.Content{
-				Parsed: &event.RoomAvatarEventContent{URL: avatarURL},
+				Parsed: &event.RoomAvatarEventContent{URL: avatarURL.CUString()},
 			},
 		})
 	}
