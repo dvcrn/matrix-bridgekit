@@ -209,6 +209,16 @@ func (pm *GhostMaster) UpdateGhostName(ctx context.Context, ghost *Ghost, newNam
 	return nil
 }
 
+// UpdateGhostAvatar updates the avatar of the given ghost with an already uploaded content URI.
+func (pm *GhostMaster) UpdateGhostAvatar(ctx context.Context, ghost *Ghost, avatarContentUri id.ContentURI) error {
+	err := pm.AsGhost(ghost).SetAvatarURL(ctx, avatarContentUri)
+	if err != nil {
+		return fmt.Errorf("could not update avatar: %w", err)
+	}
+
+	return nil
+}
+
 // SetupUserGhost creates a normal ghost for the given user.
 // This ghost will be used when the user does not have a double puppet intent.
 func (pm *GhostMaster) SetupUserGhost(ctx context.Context, user *User) (*Ghost, error) {

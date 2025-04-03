@@ -5,6 +5,8 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 
 	"github.com/dvcrn/matrix-bridgekit/matrix"
 	"go.mau.fi/util/configupgrade"
@@ -183,11 +185,60 @@ func (m *BridgeKit[T]) ReplyErrorMessage(ctx context.Context, evt *event.Event, 
 	return m.SendBotMessageInRoom(ctx, room, content)
 }
 
+// MarkRead marks the given event as read in the specified Matrix room using the provided intent.
+// This allows marking messages as read as different users, such as ghosts or double puppets.
+func (m *BridgeKit[T]) MarkRead(ctx context.Context, room *matrix.Room, eventID id.EventID, intent *appservice.IntentAPI) error {
+	fmt.Println("Marking as read with intent: ", intent.UserID, " event: ", eventID.String())
+	return intent.MarkRead(ctx, room.MXID, eventID)
+}
+
+// EditBotMessage edits a previously sent message by the bot in the specified room.
+// It takes the room ID, the event ID of the message to edit, and the new content.
+func (m *BridgeKit[T]) EditBotMessage(ctx context.Context, roomID id.RoomID, eventID id.EventID, content *event.MessageEventContent) (*mautrix.RespSendEvent, error) {
+	// Set up the edit relation to the original message
+	content.SetEdit(eventID)
+
+	// Send the edit message using the bot's intent
+	resp, err := m.Bot.SendMessageEvent(ctx, roomID, event.EventMessage, content)
+	if err != nil {
+		return nil, fmt.Errorf("failed to edit message: %w", err)
+	}
+
+	fmt.Println("Edited message: ", eventID.String(), " -> ", resp.EventID.String())
+	return resp, nil
+}
+
 // MarkRead marks the given event as read in the specified Matrix room.
 // It uses the bot's intent to mark the event as read, indicating that the bridge has read the event.
 func (m *BridgeKit[T]) MarkBotRead(ctx context.Context, room *matrix.Room, evt *event.Event) error {
 	fmt.Println("Marking as read: ", evt.ID.String())
 	return m.Bot.MarkRead(ctx, room.MXID, evt.ID)
+}
+
+// UploadImage downloads an image from the provided URL and uploads it to Matrix.
+// Returns the Matrix content URI of the uploaded image.
+func (m *BridgeKit[T]) UploadImage(ctx context.Context, url string) (id.ContentURI, error) {
+	bot := m.Bot
+
+	getResp, err := http.DefaultClient.Get(url)
+	if err != nil {
+		return id.ContentURI{}, fmt.Errorf("failed to download image: %w", err)
+	}
+
+	data, err := io.ReadAll(getResp.Body)
+	_ = getResp.Body.Close()
+	if err != nil {
+		return id.ContentURI{}, fmt.Errorf("failed to read image bytes: %w", err)
+	}
+
+	// Upload to Matrix
+	resp, err := bot.UploadBytes(ctx, data, "image/png")
+	if err != nil {
+		return id.ContentURI{}, fmt.Errorf("failed to upload image to Matrix: %w", err)
+	}
+	fmt.Println("Uploaded image to Matrix servers -- ", resp.ContentURI.String())
+
+	return resp.ContentURI, nil
 }
 
 // ResetRoomPermission resets the power levels for a given room, setting the bridge bot's power level to 9001 and the main intent user's power level to 100.
