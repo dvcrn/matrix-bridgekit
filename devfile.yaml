@@ -1,0 +1,65 @@
+schemaVersion: 2.2.0
+metadata:
+  name: matrix-bridgekit
+  displayName: Matrix BridgeKit
+  description: Build matrix bridges in Go quickly
+  version: 1.0.0
+  projectType: Go
+  language: Go
+
+components:
+  - name: go-tools
+    container:
+      image: golang:1.20
+      memoryLimit: 2Gi
+      mountSources: true
+      command: ['sleep', 'infinity']
+
+commands:
+  - id: build
+    exec:
+      component: go-tools
+      commandLine: cd boilerplate && go build cmd/bridge/main.go
+      workingDir: ${PROJECT_SOURCE}
+      group:
+        kind: build
+        isDefault: true
+
+  - id: run
+    exec:
+      component: go-tools
+      commandLine: cd boilerplate && go run cmd/bridge/main.go
+      workingDir: ${PROJECT_SOURCE}
+      group:
+        kind: run
+        isDefault: true
+
+  - id: test
+    exec:
+      component: go-tools
+      commandLine: cd boilerplate && go test ./...
+      workingDir: ${PROJECT_SOURCE}
+      group:
+        kind: test
+        isDefault: true
+
+  - id: debug
+    exec:
+      component: go-tools
+      commandLine: cd boilerplate && dlv debug cmd/bridge/main.go
+      workingDir: ${PROJECT_SOURCE}
+      group:
+        kind: debug
+        isDefault: true
+
+  - id: generate-registration
+    exec:
+      component: go-tools
+      commandLine: cd boilerplate && bbctl register -o registration.yaml sh-minibridge
+      workingDir: ${PROJECT_SOURCE}
+
+  - id: run-with-registration
+    exec:
+      component: go-tools
+      commandLine: cd boilerplate && go run cmd/bridge/main.go -r registration.yaml
+      workingDir: ${PROJECT_SOURCE}
