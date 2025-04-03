@@ -1,3 +1,8 @@
+No longer relevant - bridgev2 implements most of the stuff bridgekit tried to solve
+
+Use https://github.com/dvcrn/matrix-bridge-quickstart
+
+
 ## Matrix BridgeKit
 
 Build matrix bridges in Go quickly
